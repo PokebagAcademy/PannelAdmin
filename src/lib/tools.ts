@@ -3,7 +3,7 @@ import { prisma } from './prisma'
 import { getSftp, listDir, readFile, writeFile, stat, joinPath, removeRecursive } from './sftp-pool'
 import { safePath } from './sftp-auth'
 import { forUser, forApp, getOrgLogin } from './github'
-import { buildCobblemonTemplate } from './cobblemon-template'
+import { buildCobblemonTemplate, type TemplateVars } from './cobblemon-template'
 import { audit } from './audit'
 
 /**
@@ -593,19 +593,24 @@ export const tools: Record<string, ToolDef> = {
       })
 
       if (args.useCobblemonTemplate) {
-        const vars = args.mod ?? {
-          modId: args.name.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-          modName: args.name,
-          modGroup: `com.example.${args.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-          mainClass: args.name
-            .split(/[^a-zA-Z0-9]+/)
-            .filter(Boolean)
-            .map((p) => p[0].toUpperCase() + p.slice(1).toLowerCase())
-            .join('') || 'Mod',
-          authors: 'Cobblepanel',
-          description: args.description || `Cobblemon side-mod ${args.name}`,
-        }
-        const files = buildCobblemonTemplate({ ...vars, description: args.description || '' })
+        const fallbackDescription =
+          args.description || `Cobblemon side-mod ${args.name}`
+        const vars: TemplateVars = args.mod
+          ? { ...args.mod, description: fallbackDescription }
+          : {
+              modId: args.name.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+              modName: args.name,
+              modGroup: `com.example.${args.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+              mainClass:
+                args.name
+                  .split(/[^a-zA-Z0-9]+/)
+                  .filter(Boolean)
+                  .map((p) => p[0].toUpperCase() + p.slice(1).toLowerCase())
+                  .join('') || 'Mod',
+              authors: 'Cobblepanel',
+              description: fallbackDescription,
+            }
+        const files = buildCobblemonTemplate(vars)
         // Initial commit via Git Data API
         const treeItems: Array<{ path: string; mode: '100644'; type: 'blob'; sha: string }> = []
         for (const f of files) {
