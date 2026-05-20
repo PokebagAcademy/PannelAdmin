@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    background: theme('colors.ink.950');
+  }
+
+  body {
+    @apply font-sans text-ink-200 antialiased;
+    background:
+      radial-gradient(ellipse at top, rgba(216, 160, 74, 0.06), transparent 50%),
+      radial-gradient(ellipse at bottom, rgba(127, 211, 150, 0.04), transparent 60%),
+      theme('colors.ink.950');
+    min-height: 100vh;
+  }
+
+  /* Subtle film-grain texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.5;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Faint scanlines (animated) */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(216, 160, 74, 0.025) 2px,
+      rgba(216, 160, 74, 0.025) 3px
+    );
+    animation: scan 4s ease-in-out infinite;
+  }
+
+  ::selection {
+    background: theme('colors.amber.DEFAULT');
+    color: theme('colors.ink.950');
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display font-light tracking-tight;
+  }
+}
+
+@layer components {
+  .card {
+    @apply border border-ink-700 bg-ink-900/60 backdrop-blur-sm rounded-sm shadow-inset;
+  }
+
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 text-sm font-mono uppercase
+           tracking-[0.18em] border rounded-sm transition-colors;
+  }
+  .btn-primary {
+    @apply btn border-amber text-amber hover:bg-amber hover:text-ink-950;
+  }
+  .btn-ghost {
+    @apply btn border-ink-600 text-ink-200 hover:border-ink-400 hover:bg-ink-800;
+  }
+  .btn-danger {
+    @apply btn border-rust/60 text-rust hover:bg-rust hover:text-ink-950;
+  }
+
+  .input {
+    @apply w-full bg-ink-900/80 border border-ink-700 rounded-sm px-3 py-2
+           font-mono text-sm text-ink-100 placeholder:text-ink-500
+           focus:outline-none focus:border-amber focus:shadow-glow;
+  }
+  .label {
+    @apply block text-xs font-mono uppercase tracking-[0.18em] text-ink-400 mb-1.5;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-mono
+           uppercase tracking-[0.16em] border border-ink-600 rounded-sm
+           text-ink-300;
+  }
+  .pill-ok {
+    @apply pill border-phosphor/40 text-phosphor;
+  }
+  .pill-warn {
+    @apply pill border-amber/40 text-amber;
+  }
+  .pill-err {
+    @apply pill border-rust/50 text-rust;
+  }
+
+  .mono-caps {
+    @apply font-mono uppercase tracking-[0.18em];
+  }
+
+  /* Terminal prompt prefix used decoratively */
+  .prompt::before {
+    content: '› ';
+    @apply text-amber;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .blink::after {
+    content: '▍';
+    @apply text-amber animate-cursor ml-0.5;
+  }
+}

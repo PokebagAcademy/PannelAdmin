@@ -1,0 +1,270 @@
+// Cobblepanel — DB schema
+// Designed to cover Phases 1–5. Tables for phases 2+ are pre-created
+// to avoid future migrations breaking existing data.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth.js core tables ----------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  githubLogin   String?   @unique
+  role          Role      @default(viewer)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // BYOK Anthropic API key — removed when we switched to MCP.
+  // (Field reserved in schema during Phase 4, dropped here.)
+
+  accounts        Account[]
+  sessions        Session[]
+  permissions     MachinePermission[]
+  auditLogs       AuditLog[]
+  mcpAuthCodes    McpAuthCode[]
+  mcpTokens       McpToken[]
+}
+
+enum Role {
+  admin
+  dev
+  viewer
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------- Machines (Phase 1) ----------
+
+model Machine {
+  id          String   @id @default(cuid())
+  name        String   @unique // ex: "minestrator-01"
+  description String?
+  host        String
+  port        Int      @default(22)
+  username    String
+
+  // AES-256-GCM encrypted private key (or password)
+  authType    SshAuthType @default(key)
+  secretEnc   String      @db.Text
+  secretIv    String
+  secretTag   String
+
+  // Optional: known_hosts fingerprint pinning
+  hostKey     String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  permissions MachinePermission[]
+  deploys     Deploy[]
+  repoLinks   RepoLink[]
+}
+
+enum SshAuthType {
+  key
+  password
+}
+
+model MachinePermission {
+  id        String          @id @default(cuid())
+  userId    String
+  machineId String
+  level     PermissionLevel @default(read)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, machineId])
+}
+
+enum PermissionLevel {
+  read     // browse, download
+  write    // upload, edit, delete
+  admin    // manage perms on this machine
+}
+
+// ---------- GitHub integration (Phase 3) ----------
+
+model GithubAppInstallation {
+  id             String   @id @default(cuid())
+  installationId BigInt   @unique // GitHub installation id (numeric)
+  orgLogin       String   @unique
+  installedAt    DateTime @default(now())
+  installedById  String?
+}
+
+/// Link a machine to a deployment repo. Used by Phase 5 (build & deploy).
+model RepoLink {
+  id        String   @id @default(cuid())
+  machineId String
+  owner     String
+  repo      String
+  branch    String   @default("main")
+  /// Relative path on the machine where built artifacts land (e.g. "mods")
+  deployPath String  @default("mods")
+  createdAt DateTime @default(now())
+
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@unique([machineId, owner, repo])
+}
+
+// ---------- Audit (Phase 1+, used everywhere) ----------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   // ex: "machine.create", "sftp.upload", "claude.tool_call"
+  target    String?  // ex: machine id, path, repo
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+// ---------- MCP server OAuth (Phase 4 — replacing in-app chat) ----------
+
+/// OAuth clients registered via Dynamic Client Registration.
+/// Claude Desktop / Code register themselves here automatically the first
+/// time a user adds the connector. We keep them indefinitely; revoking
+/// happens by deleting the McpToken rows linked to a user.
+model McpOAuthClient {
+  id              String   @id @default(cuid())
+  clientId        String   @unique
+  clientName      String
+  /// Allowed redirect URIs (JSON array). Claude uses something like
+  /// "https://claude.ai/api/mcp/auth_callback" or a localhost callback.
+  redirectUris    Json
+  /// Public clients (PKCE) don't have a secret. We support public only.
+  createdAt       DateTime @default(now())
+
+  authCodes McpAuthCode[]
+  tokens    McpToken[]
+}
+
+/// Single-use authorization codes issued during the OAuth flow.
+/// Exchanged at /api/mcp/oauth/token within ~5min for an access token.
+model McpAuthCode {
+  code               String   @id
+  clientId           String
+  userId             String
+  redirectUri        String
+  /// PKCE
+  codeChallenge      String
+  codeChallengeMethod String  @default("S256")
+  /// Comma-separated scopes
+  scope              String
+  expiresAt          DateTime
+  consumedAt         DateTime?
+
+  client McpOAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Long-lived bearer tokens used by Claude to call our MCP endpoint.
+/// One per (user, client) — re-issued on re-auth.
+model McpToken {
+  token       String   @id
+  clientId    String
+  userId      String
+  scope       String
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+
+  client McpOAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------- Builds & deploys (Phase 5 — pre-created) ----------
+
+model Build {
+  id         String      @id @default(cuid())
+  repo       String      // owner/repo
+  ref        String      // branch or sha
+  status     BuildStatus @default(pending)
+  logs       String?     @db.Text
+  artifactUrl String?
+  startedAt  DateTime?
+  endedAt    DateTime?
+  createdAt  DateTime    @default(now())
+
+  deploys Deploy[]
+}
+
+enum BuildStatus {
+  pending
+  running
+  success
+  failed
+}
+
+model Deploy {
+  id         String       @id @default(cuid())
+  buildId    String
+  machineId  String
+  remotePath String
+  status     DeployStatus @default(pending)
+  logs       String?      @db.Text
+  createdAt  DateTime     @default(now())
+
+  build   Build   @relation(fields: [buildId], references: [id])
+  machine Machine @relation(fields: [machineId], references: [id])
+}
+
+enum DeployStatus {
+  pending
+  running
+  success
+  failed
+}
