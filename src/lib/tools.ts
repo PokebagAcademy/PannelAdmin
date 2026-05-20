@@ -584,7 +584,9 @@ export const tools: Record<string, ToolDef> = {
         name: args.name,
         description: args.description || undefined,
         private: args.visibility !== 'public',
-        visibility: args.visibility,
+        // GitHub accepts 'internal' for Enterprise orgs; Octokit's TS
+        // types only list 'public' | 'private'.
+        visibility: args.visibility as 'public' | 'private',
         auto_init: !args.useCobblemonTemplate,
         has_issues: true,
         has_wiki: false,

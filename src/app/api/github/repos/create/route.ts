@@ -66,7 +66,9 @@ export async function POST(req: Request) {
         name: body.name,
         description: body.description || undefined,
         private: body.visibility !== 'public',
-        visibility: body.visibility,
+        // GitHub accepts 'internal' for Enterprise orgs even though
+        // Octokit's TS types only list 'public' | 'private'.
+        visibility: body.visibility as 'public' | 'private',
         auto_init: body.template === 'none', // empty repos need an initial commit
         has_issues: true,
         has_projects: false,
