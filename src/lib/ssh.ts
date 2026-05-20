@@ -103,7 +103,7 @@ export async function testConnection(creds: MachineCreds): Promise<ConnectionTes
       })
     }, HARD_TIMEOUT_MS)
 
-    conn.on('error', (err) => {
+    conn.on('error', (err: Error) => {
       log(`event:error ${err.message}`)
       finish({ ok: false, error: friendlySshError(err.message), diagnostics: diag })
     })
@@ -111,8 +111,10 @@ export async function testConnection(creds: MachineCreds): Promise<ConnectionTes
     conn.on('close', () => log('event:close'))
     conn.on('end', () => log('event:end'))
     conn.on('timeout', () => log('event:timeout'))
-    conn.on('banner', (msg) => log(`event:banner ${JSON.stringify(msg).slice(0, 80)}`))
-    conn.on('handshake', (neg) =>
+    conn.on('banner', (msg: string) =>
+      log(`event:banner ${JSON.stringify(msg).slice(0, 80)}`),
+    )
+    conn.on('handshake', (neg: { kex: string; serverHostKey: string }) =>
       log(`event:handshake kex=${neg.kex} hostKey=${neg.serverHostKey}`),
     )
 

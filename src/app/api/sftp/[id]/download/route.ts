@@ -37,7 +37,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       start(controller) {
         stream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
         stream.on('end', () => controller.close())
-        stream.on('error', (err) => controller.error(err))
+        stream.on('error', (err: Error) => controller.error(err))
       },
       cancel() {
         stream.destroy()

@@ -171,8 +171,8 @@ export function readFile(sftp: SFTPWrapper, path: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     const stream = sftp.createReadStream(path)
-    stream.on('data', (c) => chunks.push(c as Buffer))
-    stream.on('error', reject)
+    stream.on('data', (c: Buffer) => chunks.push(c))
+    stream.on('error', (err: Error) => reject(err))
     stream.on('end', () => resolve(Buffer.concat(chunks)))
   })
 }
@@ -180,7 +180,7 @@ export function readFile(sftp: SFTPWrapper, path: string): Promise<Buffer> {
 export function writeFile(sftp: SFTPWrapper, path: string, data: Buffer): Promise<void> {
   return new Promise((resolve, reject) => {
     const stream = sftp.createWriteStream(path)
-    stream.on('error', reject)
+    stream.on('error', (err: Error) => reject(err))
     stream.on('close', () => resolve())
     stream.end(data)
   })
