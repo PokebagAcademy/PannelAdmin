@@ -84,14 +84,18 @@ export async function POST(req: Request) {
 
     // 2. Seed with template (if requested)
     if (body.template === 'cobblemon-fabric-1.21.1') {
-      const vars: TemplateVars = body.mod ?? {
-        modId: body.name.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-        modName: body.name,
-        modGroup: `com.example.${body.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-        mainClass: pascalCase(body.name),
-        authors: session.user.name ?? session.user.id,
-        description: body.description || `A Cobblemon side-mod called ${body.name}.`,
-      }
+      const fallbackDescription =
+        body.description || `A Cobblemon side-mod called ${body.name}.`
+      const vars: TemplateVars = body.mod
+        ? { ...body.mod, description: fallbackDescription }
+        : {
+            modId: body.name.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+            modName: body.name,
+            modGroup: `com.example.${body.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+            mainClass: pascalCase(body.name),
+            authors: session.user.name ?? session.user.id,
+            description: fallbackDescription,
+          }
       const files = buildCobblemonTemplate(vars)
 
       // Push all files in a single tree commit (much faster + atomic vs per-file)
