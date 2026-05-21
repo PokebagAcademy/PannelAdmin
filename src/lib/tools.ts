@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { prisma } from './prisma'
-import { getSftp, listDir, readFile, writeFile, stat, joinPath, removeRecursive } from './sftp-pool'
+import { getSftp, listDir, readFile, writeFile, stat, joinPath, removeRecursive, isDir } from './sftp-pool'
 import { safePath } from './sftp-auth'
 import { forUser, forApp, getOrgLogin } from './github'
 import { buildCobblemonTemplate, type TemplateVars } from './cobblemon-template'
@@ -134,7 +134,7 @@ export const tools: Record<string, ToolDef> = {
           .filter((e) => e.filename !== '.' && e.filename !== '..')
           .map((e) => ({
             name: e.filename,
-            type: e.attrs.isDirectory() ? 'dir' : 'file',
+            type: isDir(e.attrs.mode) ? 'dir' : 'file',
             size: Number(e.attrs.size),
             mtime: new Date(Number(e.attrs.mtime) * 1000).toISOString(),
           })),
@@ -218,6 +218,152 @@ export const tools: Record<string, ToolDef> = {
         metadata: { size: args.content.length },
       })
       return { path: p, size: args.content.length, ok: true }
+    },
+  },
+
+  sftp_upload_from_url: {
+    kind: 'write',
+    schema: {
+      name: 'sftp_upload_from_url',
+      description:
+        'Download a file from a public HTTPS URL and write it to a remote SFTP path. Streams the data through the panel server — no memory limit, no base64 hassle. Use this for binaries (.jar mods, .zip world backups, images, etc.) or anything that would be tedious to encode. ⚠ destructive: overwrites the destination file if it exists.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description:
+              'Source URL — must be https:// (http:// is rejected). Examples: a Modrinth/CurseForge download link, a GitHub release asset, a Gist raw URL.',
+          },
+          path: {
+            type: 'string',
+            description: 'Remote destination path (e.g. "mods/cobblemon-1.7.1.jar")',
+          },
+          machine: { type: 'string', description: 'Optional machine name/id.' },
+        },
+        required: ['url', 'path'],
+      },
+    },
+    async execute(input, ctx) {
+      const args = z
+        .object({
+          url: z.string().url(),
+          path: z.string(),
+          machine: z.string().optional().nullable(),
+        })
+        .parse(input)
+
+      // Security: only allow https. http is too easy to abuse for SSRF
+      // against the panel's internal network.
+      const parsedUrl = new URL(args.url)
+      if (parsedUrl.protocol !== 'https:')
+        throw new Error('only_https_allowed')
+      // Block private/loopback ranges to avoid SSRF against panel infra.
+      const host = parsedUrl.hostname.toLowerCase()
+      if (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '0.0.0.0' ||
+        host.startsWith('10.') ||
+        host.startsWith('192.168.') ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+        host.endsWith('.internal') ||
+        host.endsWith('.local')
+      ) {
+        throw new Error('private_host_blocked')
+      }
+
+      const machineId = await resolveMachineId(ctx, args.machine)
+      await checkMachinePerm(ctx, machineId, true)
+      const sftp = await getSftp(machineId)
+      const p = safePath(args.path)
+
+      const MAX_BYTES = 500 * 1024 * 1024 // 500 MB
+      const TIMEOUT_MS = 5 * 60 * 1000 // 5 min
+
+      // Fetch with abort timeout
+      const abort = new AbortController()
+      const timer = setTimeout(() => abort.abort(), TIMEOUT_MS)
+      let res: Response
+      try {
+        res = await fetch(args.url, {
+          redirect: 'follow',
+          signal: abort.signal,
+          headers: { 'user-agent': 'Cobblepanel/0.4 (+admin.cobblehub.fr)' },
+        })
+      } catch (err) {
+        clearTimeout(timer)
+        const msg = err instanceof Error ? err.message : String(err)
+        throw new Error(`fetch_failed: ${msg}`)
+      }
+
+      if (!res.ok) {
+        clearTimeout(timer)
+        throw new Error(`http_${res.status}: ${res.statusText}`)
+      }
+
+      // Pre-flight size check via Content-Length when available
+      const lenHeader = res.headers.get('content-length')
+      const declaredSize = lenHeader ? Number(lenHeader) : null
+      if (declaredSize != null && declaredSize > MAX_BYTES) {
+        clearTimeout(timer)
+        throw new Error(
+          `file_too_large: ${declaredSize} bytes (max ${MAX_BYTES})`,
+        )
+      }
+      if (!res.body) {
+        clearTimeout(timer)
+        throw new Error('no_response_body')
+      }
+
+      // Stream from fetch → SFTP write stream chunk by chunk.
+      // Tracks total size to enforce MAX_BYTES even when server didn't send
+      // a Content-Length header.
+      const sftpStream = sftp.createWriteStream(p)
+      let written = 0
+      try {
+        const reader = res.body.getReader()
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          written += value.byteLength
+          if (written > MAX_BYTES) {
+            sftpStream.destroy()
+            throw new Error(
+              `file_too_large: streamed ${written} bytes (max ${MAX_BYTES})`,
+            )
+          }
+          // Backpressure: wait if the SFTP buffer is full
+          if (!sftpStream.write(value)) {
+            await new Promise<void>((resolve) => sftpStream.once('drain', resolve))
+          }
+        }
+        await new Promise<void>((resolve, reject) => {
+          sftpStream.once('close', () => resolve())
+          sftpStream.once('error', (err: Error) => reject(err))
+          sftpStream.end()
+        })
+      } finally {
+        clearTimeout(timer)
+      }
+
+      await audit({
+        userId: ctx.userId,
+        action: 'claude.sftp_upload_from_url',
+        target: `${machineId}:${p}`,
+        metadata: {
+          sourceUrl: args.url.slice(0, 200),
+          sourceHost: parsedUrl.host,
+          size: written,
+        },
+      })
+
+      return {
+        path: p,
+        size: written,
+        sourceUrl: args.url,
+        ok: true,
+      }
     },
   },
 

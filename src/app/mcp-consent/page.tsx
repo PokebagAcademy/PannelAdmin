@@ -63,6 +63,7 @@ export default async function McpConsentPage({
           <ToolRow name="list_machines" desc="liste tes machines SFTP" />
           <ToolRow name="sftp_list / sftp_read" desc="explore et lit des fichiers" />
           <ToolRow name="sftp_write" desc="écrit des fichiers (⚠ destructif)" kind="write" />
+          <ToolRow name="sftp_upload_from_url" desc="upload depuis une URL (⚠ destructif)" kind="write" />
           <ToolRow name="sftp_delete" desc="supprime fichiers/dossiers (⚠ destructif)" kind="write" />
           <ToolRow name="list_repos / github_read_file" desc="lit le code GitHub" />
           <ToolRow name="github_commit / github_open_pr" desc="commit & PR (⚠ destructif)" kind="write" />
