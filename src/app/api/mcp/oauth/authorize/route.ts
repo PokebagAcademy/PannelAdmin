@@ -50,10 +50,14 @@ export async function GET(req: Request) {
   if (!allowed)
     return paramErr(null, 'invalid_request', 'redirect_uri not registered for this client', state)
 
+  // Use NEXTAUTH_URL as the public base for redirects — req.url shows the
+  // internal 127.0.0.1:3000 when running behind a reverse proxy.
+  const publicBase = (process.env.NEXTAUTH_URL ?? url.origin).replace(/\/$/, '')
+
   // If the panel user isn't logged in, kick them to /login then back here
   const session = await auth()
   if (!session?.user?.id) {
-    const back = new URL('/login', url.origin)
+    const back = new URL('/login', publicBase)
     back.searchParams.set(
       'callbackUrl',
       url.pathname + url.search, // come back to /authorize after login
@@ -62,10 +66,7 @@ export async function GET(req: Request) {
   }
 
   // Render a tiny consent page — server-rendered HTML
-  const consentUrl = new URL('/api/mcp/oauth/authorize', url.origin)
-  // (No content — the consent UI is served by a separate page route below)
-  // Redirect to the consent UI page with the same params
-  const ui = new URL('/mcp-consent', url.origin)
+  const ui = new URL('/mcp-consent', publicBase)
   ui.search = url.search
   return NextResponse.redirect(ui)
 }
