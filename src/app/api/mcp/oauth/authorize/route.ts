@@ -72,14 +72,38 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const fd = await req.formData()
-  const clientId = String(fd.get('client_id') ?? '')
-  const redirectUri = String(fd.get('redirect_uri') ?? '')
-  const state = (fd.get('state') as string | null) ?? null
-  const codeChallenge = String(fd.get('code_challenge') ?? '')
-  const codeChallengeMethod = String(fd.get('code_challenge_method') ?? '')
-  const scope = String(fd.get('scope') ?? 'mcp')
-  const action = String(fd.get('action') ?? '')
+  // Accept both form-encoded (legacy) and JSON (from our consent UI).
+  // The JSON path is what the client uses now, so cookies travel via
+  // a same-origin fetch with credentials:include — sidesteps SameSite=Lax
+  // restrictions that would otherwise block a cross-site form POST.
+  let clientId = ''
+  let redirectUri = ''
+  let state: string | null = null
+  let codeChallenge = ''
+  let codeChallengeMethod = ''
+  let scope = 'mcp'
+  let action = ''
+
+  const ct = req.headers.get('content-type') ?? ''
+  if (ct.includes('application/json')) {
+    const body = (await req.json()) as Record<string, string>
+    clientId = String(body.client_id ?? '')
+    redirectUri = String(body.redirect_uri ?? '')
+    state = body.state ?? null
+    codeChallenge = String(body.code_challenge ?? '')
+    codeChallengeMethod = String(body.code_challenge_method ?? '')
+    scope = String(body.scope ?? 'mcp')
+    action = String(body.action ?? '')
+  } else {
+    const fd = await req.formData()
+    clientId = String(fd.get('client_id') ?? '')
+    redirectUri = String(fd.get('redirect_uri') ?? '')
+    state = (fd.get('state') as string | null) ?? null
+    codeChallenge = String(fd.get('code_challenge') ?? '')
+    codeChallengeMethod = String(fd.get('code_challenge_method') ?? '')
+    scope = String(fd.get('scope') ?? 'mcp')
+    action = String(fd.get('action') ?? '')
+  }
 
   if (!clientId || !redirectUri)
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 })
@@ -89,12 +113,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const client = await prisma.mcpOAuthClient.findUnique({ where: { clientId } })
-  if (!client) return paramErr(redirectUri, 'invalid_client', 'unknown client_id', state)
+  if (!client)
+    return NextResponse.json(
+      { error: 'invalid_client', hint: 'unknown client_id' },
+      { status: 400 },
+    )
   if (!(client.redirectUris as string[]).includes(redirectUri))
-    return paramErr(null, 'invalid_request', 'redirect_uri mismatch', state)
+    return NextResponse.json(
+      { error: 'invalid_request', hint: 'redirect_uri mismatch' },
+      { status: 400 },
+    )
 
   // User denied
-  if (action === 'deny') return paramErr(redirectUri, 'access_denied', 'user denied', state)
+  if (action === 'deny') {
+    const back = new URL(redirectUri)
+    back.searchParams.set('error', 'access_denied')
+    back.searchParams.set('error_description', 'user denied')
+    if (state) back.searchParams.set('state', state)
+    return NextResponse.json({ redirect_to: back.toString() })
+  }
 
   // Issue the code
   const code = 'ac_' + crypto.randomBytes(24).toString('hex')
@@ -120,5 +157,5 @@ export async function POST(req: Request) {
   const back = new URL(redirectUri)
   back.searchParams.set('code', code)
   if (state) back.searchParams.set('state', state)
-  return NextResponse.redirect(back)
+  return NextResponse.json({ redirect_to: back.toString() })
 }

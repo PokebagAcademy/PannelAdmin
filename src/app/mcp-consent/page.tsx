@@ -1,7 +1,7 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ConsentButtons } from './consent-buttons'
 
 export default async function McpConsentPage({
   searchParams,
@@ -76,28 +76,14 @@ export default async function McpConsentPage({
           confirmation côté client.
         </div>
 
-        <form
-          action="/api/mcp/oauth/authorize"
-          method="POST"
-          className="flex justify-end gap-2"
-        >
-          <input type="hidden" name="client_id" value={params.client_id} />
-          <input type="hidden" name="redirect_uri" value={params.redirect_uri} />
-          <input type="hidden" name="state" value={params.state ?? ''} />
-          <input type="hidden" name="code_challenge" value={params.code_challenge ?? ''} />
-          <input
-            type="hidden"
-            name="code_challenge_method"
-            value={params.code_challenge_method ?? 'S256'}
-          />
-          <input type="hidden" name="scope" value={params.scope ?? 'mcp'} />
-          <button type="submit" name="action" value="deny" className="btn-danger">
-            refuser
-          </button>
-          <button type="submit" name="action" value="allow" className="btn-primary">
-            autoriser
-          </button>
-        </form>
+        <ConsentButtons
+          clientId={params.client_id}
+          redirectUri={params.redirect_uri}
+          state={params.state ?? ''}
+          codeChallenge={params.code_challenge ?? ''}
+          codeChallengeMethod={params.code_challenge_method ?? 'S256'}
+          scope={params.scope ?? 'mcp'}
+        />
 
         <div className="mt-6 pt-4 border-t border-ink-800 text-[10px] font-mono text-ink-500">
           redirect_uri : <span className="text-ink-300">{params.redirect_uri}</span>
