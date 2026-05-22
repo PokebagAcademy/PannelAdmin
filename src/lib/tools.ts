@@ -4,6 +4,7 @@ import { getSftp, listDir, readFile, writeFile, stat, joinPath, removeRecursive,
 import { safePath } from './sftp-auth'
 import { forUser, forApp, getOrgLogin } from './github'
 import { buildCobblemonTemplate, type TemplateVars } from './cobblemon-template'
+import { getRconConfig, rconExec } from './rcon'
 import { audit } from './audit'
 
 /**
@@ -409,6 +410,62 @@ export const tools: Record<string, ToolDef> = {
         metadata: { wasDirectory: wasDir },
       })
       return { path: p, wasDirectory: wasDir, ok: true }
+    },
+  },
+
+  /* ============= RCON ============= */
+
+  rcon_exec: {
+    kind: 'write',
+    schema: {
+      name: 'rcon_exec',
+      description:
+        'Run a Minecraft RCON command on the server and return its response. Use this for in-game actions: spawning entities, teleporting players, changing time/weather, listing players, sending broadcast messages, etc. The command should NOT start with "/" — just the command name and arguments (e.g. "say Hello", "time set day", "list"). ⚠ destructive: RCON commands can affect the live server. Some commands (stop, op, ban, whitelist) are reserved to admins.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description:
+              'The command to execute, without leading slash. Examples: "list", "say Bienvenue !", "time set day", "weather clear", "give @a minecraft:diamond 1".',
+          },
+          machine: { type: 'string', description: 'Optional machine name/id.' },
+        },
+        required: ['command'],
+      },
+    },
+    async execute(input, ctx) {
+      const args = z
+        .object({
+          command: z.string().min(1).max(2000),
+          machine: z.string().optional().nullable(),
+        })
+        .parse(input)
+      const machineId = await resolveMachineId(ctx, args.machine)
+      await checkMachinePerm(ctx, machineId, true)
+
+      const cfg = await getRconConfig(machineId)
+      if (!cfg) throw new Error('rcon_not_configured')
+
+      const command = args.command.trim().replace(/^\//, '')
+      const result = await rconExec(cfg, command)
+
+      await audit({
+        userId: ctx.userId,
+        action: 'claude.rcon_exec',
+        target: `${machineId}:${command.split(/\s+/)[0]}`,
+        metadata: {
+          command: command.slice(0, 500),
+          ok: result.ok,
+          durationMs: result.durationMs,
+        },
+      })
+
+      if (!result.ok) throw new Error(result.error ?? 'rcon_failed')
+      return {
+        response: result.response ?? '',
+        durationMs: result.durationMs,
+      }
     },
   },
 

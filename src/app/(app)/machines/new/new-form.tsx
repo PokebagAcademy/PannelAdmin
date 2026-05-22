@@ -13,6 +13,9 @@ export function NewMachineForm() {
     e.preventDefault()
     setError(null)
     const fd = new FormData(e.currentTarget)
+    const rconPortRaw = fd.get('rconPort')?.toString().trim()
+    const rconPasswordRaw = fd.get('rconPassword')?.toString()
+    const rconHostRaw = fd.get('rconHost')?.toString().trim()
     const payload = {
       name: fd.get('name'),
       description: fd.get('description') || null,
@@ -21,6 +24,14 @@ export function NewMachineForm() {
       username: fd.get('username'),
       authType,
       secret: fd.get('secret'),
+      // RCON is optional — only send fields if user filled them
+      ...(rconPortRaw && rconPasswordRaw
+        ? {
+            rconHost: rconHostRaw || null,
+            rconPort: Number(rconPortRaw),
+            rconPassword: rconPasswordRaw,
+          }
+        : {}),
     }
 
     start(async () => {
@@ -155,6 +166,61 @@ export function NewMachineForm() {
           {error}
         </div>
       )}
+
+      <details className="border border-ink-800 rounded-sm">
+        <summary className="px-4 py-3 cursor-pointer mono-caps text-xs text-amber hover:bg-ink-800/40 transition-colors">
+          // rcon (optionnel)
+        </summary>
+        <div className="p-4 border-t border-ink-800 space-y-4">
+          <p className="text-xs text-ink-400 font-mono leading-relaxed">
+            Active Minecraft Remote Console pour piloter le serveur depuis le
+            panel (console interactive + tool MCP pour Claude). Laisse vide si
+            tu ne veux pas configurer RCON maintenant.
+          </p>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="label" htmlFor="rconHost">RCON host (optionnel)</label>
+              <input
+                id="rconHost"
+                name="rconHost"
+                placeholder="défaut = host SFTP"
+                className="input"
+              />
+              <p className="mt-1 text-[10px] text-ink-500 font-mono">
+                Souvent identique au host SFTP. Laisse vide si c&apos;est le cas.
+              </p>
+            </div>
+            <div>
+              <label className="label" htmlFor="rconPort">RCON port</label>
+              <input
+                id="rconPort"
+                name="rconPort"
+                type="number"
+                min="1"
+                max="65535"
+                placeholder="25575"
+                className="input"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label" htmlFor="rconPassword">RCON password</label>
+            <input
+              id="rconPassword"
+              name="rconPassword"
+              type="password"
+              autoComplete="off"
+              className="input"
+            />
+            <p className="mt-1 text-[10px] text-ink-500 font-mono">
+              Celui que tu as mis dans <code className="text-amber">server.properties</code> →{' '}
+              <code className="text-amber">rcon.password</code>. Stocké chiffré.
+            </p>
+          </div>
+        </div>
+      </details>
 
       <div className="flex justify-end gap-3 pt-4 border-t border-ink-800">
         <button

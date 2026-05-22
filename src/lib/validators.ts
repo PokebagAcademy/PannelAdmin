@@ -12,6 +12,11 @@ export const createMachineSchema = z.object({
   username: z.string().min(1).max(64),
   authType: z.enum(['key', 'password']),
   secret: z.string().min(1),
+
+  // Optional RCON (Minecraft Remote Console)
+  rconHost: z.string().min(1).max(253).optional().nullable(),
+  rconPort: z.coerce.number().int().min(1).max(65535).optional().nullable(),
+  rconPassword: z.string().min(1).optional().nullable(),
 })
 
 export type CreateMachineInput = z.infer<typeof createMachineSchema>

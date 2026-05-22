@@ -95,6 +95,16 @@ model Machine {
   // Optional: known_hosts fingerprint pinning
   hostKey     String?
 
+  // ---- RCON (optional) — Minecraft Remote Console for in-game commands ----
+  // Most of the time rconHost is the same as `host` (game server IP), but
+  // some hosters route RCON on a different IP/hostname. Left nullable to
+  // make RCON entirely optional.
+  rconHost        String?
+  rconPort        Int?
+  rconPasswordEnc String?
+  rconPasswordIv  String?
+  rconPasswordTag String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdById String?

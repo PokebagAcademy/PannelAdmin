@@ -53,6 +53,12 @@ export default async function MachineFilesPage({
             {machine.username}@{machine.host}:{machine.port}
           </span>
           {!canWrite && <span className="pill-warn">read-only</span>}
+          <Link
+            href={`/machines/${id}/console`}
+            className="mono-caps text-[10px] text-phosphor border border-phosphor/40 hover:bg-phosphor hover:text-ink-950 px-2 py-1 rounded-sm transition-colors"
+          >
+            console rcon →
+          </Link>
         </div>
       </header>
 

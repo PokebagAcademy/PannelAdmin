@@ -6,8 +6,6 @@ import { audit } from '@/lib/audit'
 import { createMachineSchema } from '@/lib/validators'
 import { looksLikePrivateKey } from '@/lib/ssh'
 
-export const runtime = 'nodejs'
-
 /** GET /api/machines — list machines the current user has access to. */
 export async function GET() {
   try {
@@ -55,6 +53,25 @@ export async function POST(req: Request) {
 
     const secret = encrypt(data.secret)
 
+    // Encrypt optional RCON password
+    let rconPasswordFields: {
+      rconHost?: string | null
+      rconPort?: number | null
+      rconPasswordEnc?: string
+      rconPasswordIv?: string
+      rconPasswordTag?: string
+    } = {}
+    if (data.rconPort && data.rconPassword) {
+      const enc = encrypt(data.rconPassword)
+      rconPasswordFields = {
+        rconHost: data.rconHost ?? null,
+        rconPort: data.rconPort,
+        rconPasswordEnc: enc.enc,
+        rconPasswordIv: enc.iv,
+        rconPasswordTag: enc.tag,
+      }
+    }
+
     const machine = await prisma.machine.create({
       data: {
         name: data.name,
@@ -66,6 +83,7 @@ export async function POST(req: Request) {
         secretEnc: secret.enc,
         secretIv: secret.iv,
         secretTag: secret.tag,
+        ...rconPasswordFields,
         createdById: session.user.id,
         // Creator gets admin permission on the machine
         permissions: {
