@@ -106,6 +106,14 @@ export function MachineRow({
           {state.kind === 'testing' ? '…' : 'test'}
         </button>
         {canDelete && (
+          <Link
+            href={`/machines/${machine.id}/edit`}
+            className="btn-ghost text-[10px] py-1 px-2"
+          >
+            edit
+          </Link>
+        )}
+        {canDelete && (
           <button
             onClick={remove}
             disabled={pending}
